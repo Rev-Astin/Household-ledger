@@ -197,6 +197,22 @@ svg.chart{width:100%;height:auto;display:block}
   .fixrow .amt{text-align:left}
 }
 
+
+/* re-categorise tool */
+.tidy{border:1px dashed var(--clay);background:#fdf7f0;border-radius:12px;padding:14px;margin-bottom:16px}
+.tidy h3{font-size:16px;color:var(--bark);margin:0 0 4px}
+.trow{display:grid;grid-template-columns:1.5fr auto 1.3fr auto;gap:8px;align-items:center;
+  padding:9px 0;border-bottom:1px solid #f0e6d8}
+.trow:last-child{border-bottom:0}
+.trow .m{font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis}
+.trow .n{font-size:12.5px;color:#7a7263;white-space:nowrap}
+.trow select{font-size:14px;padding:8px}
+@media(max-width:720px){
+  .trow{grid-template-columns:1fr auto;gap:6px}
+  .trow select{grid-column:1/-1}
+  .trow .ap{grid-column:1/-1}
+}
+
 /* floating add button — phones only */
 .fab{
   position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:40;
@@ -357,6 +373,7 @@ svg.chart{width:100%;height:auto;display:block}
           <input id="fl-q" placeholder="shop, note or item" autocomplete="off">
         </div>
       </div>
+      <div id="tidyBox"></div>
       <div id="entriesTotals" class="row" style="font-size:13.5px;color:#6c6455;margin-bottom:10px"></div>
       <div class="only-wide scroll"><div id="entriesTable"></div></div>
       <div class="only-narrow"><div id="entriesCards"></div></div>
@@ -496,6 +513,10 @@ svg.chart{width:100%;height:auto;display:block}
         <input id="newCat" placeholder="New category name" style="max-width:280px">
         <button class="btn ghost sm" id="addCat" type="button">Add</button>
       </div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn ghost sm" id="resetCats" type="button">Restore the standard list</button>
+      </div>
+      <div class="hint" style="margin:8px 0 0">Restoring adds any missing standard categories back. It never deletes a category you are using, and never touches an entry.</div>
     </div>
     <div class="card">
       <h2>Danger zone</h2>
@@ -512,8 +533,8 @@ svg.chart{width:100%;height:auto;display:block}
 
 <script>
 /* ============================ storage ============================ */
-const APP_VERSION = '2';          // shown at the bottom of the Setup tab
-const APP_UPDATED = '31 Aug 2026';
+const APP_VERSION = '5';          // shown at the bottom of the Setup tab
+const APP_UPDATED = '31 Aug 2026 (v5)';
 const DB_NAME = 'harvestLedger', DB_VER = 1; // internal store name kept as-is so entries logged before the rename are not lost
 let db = null;
 
@@ -536,7 +557,7 @@ function dbAll(store){ return new Promise((res,rej)=>{ const r = tx(store,'reado
 function dbGet(store, key){ return new Promise((res,rej)=>{ const r = tx(store,'readonly').get(key); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
 function dbClear(store){ return new Promise((res,rej)=>{ const r = tx(store,'readwrite').clear(); r.onsuccess=()=>res(); r.onerror=()=>rej(r.error); }); }
 
-const DEFAULT_CATS = ['Groceries','Fuel','Bond / rent','Insurance & policies','Household & cleaning','Toiletries & health','Utilities (water/electricity)','Airtime & data','Transport & vehicle','School & education','Garden & livestock','Medical','Eating out','Clothing','Repairs & maintenance','Other'];
+const DEFAULT_CATS = ["Groceries","Sin (alcohol & tobacco)","Fuel","Eating out & takeaways","Household & cleaning","Toiletries & personal care","Health & pharmacy","Clothing & shoes","Airtime, data & fibre","Electricity & water","Levies & rates","Bond / rent","Insurance & policies","Medical aid","School & education","Debt & instalments","Subscriptions","Vehicle & transport","Repairs & maintenance","Home improvements","Garden & outdoor","Livestock & feed","Pets & vet","Family support","Gifts & celebrations","Cash withdrawals","Other"];
 
 let ENTRIES = [];
 let CATS = DEFAULT_CATS.slice();
@@ -549,6 +570,8 @@ let SYNC = {url:'', pw:'', device:'', auto:true, since:0, pushedAt:0, lastOk:0, 
 let syncing = false, syncTimer = null;
 let BUDGETS = {};   // { category: monthly cap }
 let FIXED = [];     // recurring cost definitions
+let RULES = {};     // shop stem -> category, learned when you re-categorise
+let tidySearch = '', tidyRemember = true, tidyTimer = null;
 
 /* ============================ helpers ============================ */
 const $ = s => document.querySelector(s);
@@ -887,7 +910,7 @@ async function saveEntry(){
 function show(v){
   $$('#nav button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
   $$('.view').forEach(s => s.hidden = (s.id !== 'v-' + v));
-  if(v === 'entries') renderEntries();
+  if(v === 'entries'){ renderEntries(); renderTidy(); }
   if(v === 'insights') renderInsights();
   if(v === 'prices') renderPrices();
   if(v === 'data') renderData();
@@ -1233,7 +1256,8 @@ async function importJSON(file){
     await dbPut('meta', {key:'categories', value:CATS});
   }
   await reload();
-  toast('Imported ' + n + ' entries');
+  const filed = await applyRules();
+  toast('Imported ' + n + ' entries' + (filed ? ', ' + filed + ' auto-filed' : ''));
 }
 
 
@@ -1457,6 +1481,118 @@ function applyQuick(c, alsoTotal){
   toast(alsoTotal ? 'Filled in — check the amount' : 'Filled in — type the amount');
 }
 
+
+/* ============================ re-categorising, and learning from it ============================ */
+function stemStore(s){
+  const t = String(s || '').toLowerCase()
+    .replace(/\b(pty|ltd|limited|za|gb|cape town|ottery|kenilworth|wynberg|claremont|plumstead|grassy park|milnerton|tokai)\b/g, ' ')
+    .replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim();
+  return t.split(' ').slice(0, 3).join(' ') || 'unknown';
+}
+function needsCategory(e){
+  return e.category === 'Other' || /needs checking/.test(e.notes || '');
+}
+async function loadRules(){
+  const r = await dbGet('meta','rules');
+  RULES = (r && r.value) || {};
+}
+async function saveRules(){ await dbPut('meta', {key:'rules', value:RULES}); }
+
+/** Apply remembered shop rules to anything still sitting in Other. */
+async function applyRules(){
+  const keys = Object.keys(RULES);
+  if(!keys.length) return 0;
+  let n = 0;
+  for(const e of ALL){
+    if(e.deleted || !needsCategory(e)) continue;
+    const stem = stemStore(e.store), raw = String(e.store || '').toLowerCase();
+    const hit = keys.find(k => k === stem || raw.indexOf(k) !== -1);
+    if(!hit) continue;
+    await dbPut('entries', Object.assign({}, e, {
+      category: RULES[hit], updated: Date.now(),
+      notes: (e.notes || '').replace(/ · category needs checking/, '')
+    }));
+    n++;
+  }
+  if(n) await loadEntries();
+  return n;
+}
+
+async function applyCategoryTo(stem, cat, remember){
+  const targets = ALL.filter(e => !e.deleted && stemStore(e.store) === stem);
+  if(!targets.length) return 0;
+  for(const e of targets){
+    await dbPut('entries', Object.assign({}, e, {
+      category: cat, updated: Date.now(),
+      notes: (e.notes || '').replace(/ · category needs checking/, '')
+    }));
+  }
+  if(remember){ RULES[stem] = cat; await saveRules(); }
+  await reload();
+  queueSync();
+  return targets.length;
+}
+
+function groupByStore(list){
+  const m = new Map();
+  list.forEach(e => {
+    const k = stemStore(e.store);
+    if(!m.has(k)) m.set(k, {stem:k, label:e.store || 'Unknown', n:0, total:0, cats:new Set()});
+    const g = m.get(k);
+    g.n++; g.total += num(e.total); g.cats.add(e.category);
+  });
+  return Array.from(m.values()).sort((a,b) => b.total - a.total);
+}
+
+function catOptions(sel){
+  return CATS.map(c => '<option' + (c === sel ? ' selected' : '') + '>' + esc(c) + '</option>').join('');
+}
+
+function renderTidy(){
+  const box = $('#tidyBox');
+  if(!box) return;
+  const q = (tidySearch || '').trim().toLowerCase();
+  const live = ALL.filter(e => !e.deleted);
+  let groups, heading, hint;
+
+  if(q){
+    groups = groupByStore(live.filter(e =>
+      String(e.store || '').toLowerCase().indexOf(q) !== -1 ||
+      String(e.category || '').toLowerCase().indexOf(q) !== -1)).slice(0, 12);
+    heading = 'Change a category';
+    hint = 'Pick a category and it is applied to every entry from that shop at once.';
+  } else {
+    groups = groupByStore(live.filter(needsCategory)).slice(0, 12);
+    heading = 'Needs a category';
+    hint = 'These did not match any shop I know. Assign one and I will remember it for next time.';
+  }
+
+  let h = '<div class="tidy">';
+  h += '<h3>' + heading + '</h3><div class="hint" style="margin-bottom:10px">' + hint + '</div>';
+  h += '<div class="row" style="margin-bottom:10px">' +
+       '<input id="tidyQ" placeholder="Find a shop to re-categorise, e.g. Chingadas" autocomplete="off" value="' + esc(tidySearch || '') + '">' +
+       (q ? '<button class="btn ghost sm" id="tidyClear" type="button">Clear</button>' : '') +
+       '</div>';
+  if(!groups.length){
+    h += '<div class="empty">' + (q ? 'No entries match that.' : 'Nothing waiting — every entry has a category.') + '</div>';
+  } else {
+    groups.forEach(g => {
+      const cur = g.cats.size === 1 ? Array.from(g.cats)[0] : '';
+      h += '<div class="trow">' +
+        '<div class="m" title="' + esc(g.label) + '">' + esc(g.label.length > 34 ? g.label.slice(0,33) + '…' : g.label) + '</div>' +
+        '<div class="n">' + g.n + '× · ' + money(g.total) + '</div>' +
+        '<select class="tidySel" data-stem="' + esc(g.stem) + '">' + catOptions(cur) + '</select>' +
+        '<button class="btn ghost sm ap tidyApply" data-stem="' + esc(g.stem) + '">Apply</button>' +
+      '</div>';
+    });
+    h += '<label class="row" style="margin-top:10px;font-size:13px;color:#6c6455">' +
+         '<input type="checkbox" id="tidyRemember" style="width:auto;min-height:0;margin:0"' + (tidyRemember ? ' checked' : '') + '>' +
+         '<span>Remember the shop, so imports land in the right place next time</span></label>';
+  }
+  h += '</div>';
+  box.innerHTML = h;
+}
+
 /* ============================ shared sync (Google Sheet backend) ============================ */
 async function loadEntries(){
   ALL = await dbAll('entries');
@@ -1518,19 +1654,46 @@ function updatePill(){
   p.textContent = syncMsg();
   p.className = 'pill' + (!syncConfigured() ? ' off' : syncing ? ' busy' : SYNC.lastError ? ' warn' : '');
 }
-async function postJSON(url, payload){
-  const res = await fetch(url, {
-    method:'POST',
-    // text/plain avoids a CORS preflight, which Apps Script cannot answer
-    headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body: JSON.stringify(payload),
-    redirect:'follow'
+/* A <script> tag is never blocked by CORS, so this is how we READ from the sheet.
+   Google's /exec does not send an Access-Control-Allow-Origin header, which is why a
+   plain fetch() fails with "blocked by CORS policy" on a hosted page. */
+function jsonpGet(url){
+  return new Promise((resolve, reject) => {
+    const cb = 'vslcb' + Date.now().toString(36) + Math.floor(Math.random()*1e6).toString(36);
+    const s = document.createElement('script');
+    let done = false;
+    const cleanup = () => {
+      clearTimeout(timer);
+      try { delete window[cb]; } catch(e){ window[cb] = undefined; }
+      if(s.parentNode) s.parentNode.removeChild(s);
+    };
+    const timer = setTimeout(() => {
+      if(done) return; done = true; cleanup();
+      reject(new Error('the sheet did not answer within 25 seconds'));
+    }, 25000);
+    window[cb] = data => { if(done) return; done = true; cleanup(); resolve(data); };
+    s.onerror = () => {
+      if(done) return; done = true; cleanup();
+      reject(new Error('could not reach that web app URL — check it ends in /exec and is deployed to "Anyone"'));
+    };
+    s.src = url + (url.indexOf('?') === -1 ? '?' : '&') + 'callback=' + cb;
+    document.head.appendChild(s);
   });
-  return await res.json();
 }
-async function getJSON(url){
-  const res = await fetch(url, {method:'GET', redirect:'follow'});
-  return await res.json();
+
+/* Writes go out blind: the browser will not let us read the reply cross-origin, but the
+   request does arrive. The next read confirms what landed, and the sheet ignores repeats. */
+async function postBlind(url, payload){
+  try {
+    await fetch(url, {
+      method:'POST', mode:'no-cors', redirect:'follow',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},   // text/plain avoids a preflight
+      body: JSON.stringify(payload)
+    });
+    return true;
+  } catch(err){
+    return false;
+  }
 }
 async function syncNow(quiet){
   if(syncing || !syncConfigured()) { if(!quiet && !syncConfigured()) toast('Add the web app URL and password first'); return; }
@@ -1540,16 +1703,13 @@ async function syncNow(quiet){
   const pushedIds = outbound.map(e => e.id);
   const payload = {pw:SYNC.pw, since:Number(SYNC.since)||0, entries:outbound, device:SYNC.device||''};
   let data = null, err = null;
+  // push blind, then read back over JSONP — neither step depends on CORS
+  if(outbound.length) await postBlind(SYNC.url, payload);
   try {
-    data = await postJSON(SYNC.url, payload);
-  } catch(e1){
-    // Some browsers refuse to read the reply cross-origin. Send it blind, then pull.
-    try {
-      await fetch(SYNC.url, {method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(payload)});
-      data = await getJSON(SYNC.url + '?pw=' + encodeURIComponent(SYNC.pw) + '&since=' + (Number(SYNC.since)||0));
-    } catch(e2){
-      err = (e2 && e2.message) || String(e2);
-    }
+    data = await jsonpGet(SYNC.url + '?pw=' + encodeURIComponent(SYNC.pw) +
+                          '&since=' + (Number(SYNC.since)||0));
+  } catch(e){
+    err = (e && e.message) || String(e);
   }
   if(data && data.ok === false) err = data.error || 'the script refused the request';
   if(!err && data){
@@ -1569,6 +1729,7 @@ async function syncNow(quiet){
       SYNC.lastError = '';
       await saveSyncConfig();
       await reload();
+      if(changed) await applyRules();
       if(!quiet) toast(changed ? 'Synced — ' + changed + ' entr' + (changed===1?'y':'ies') + ' came in' : 'Synced — everything already matched');
     } catch(mergeErr){
       // never advance the watermark past entries we failed to store
@@ -1593,11 +1754,11 @@ async function testSync(){
   if(!syncConfigured()){ toast('Add the web app URL and password first'); return; }
   toast('Testing…');
   try {
-    const d = await getJSON(SYNC.url + '?pw=' + encodeURIComponent(SYNC.pw) + '&ping=1');
+    const d = await jsonpGet(SYNC.url + '?pw=' + encodeURIComponent(SYNC.pw) + '&ping=1');
     if(d.ok) toast('Connected. The sheet holds ' + d.count + ' entries.');
     else toast('Reached it, but: ' + d.error);
   } catch(e){
-    toast('Could not reach that URL — check it ends in /exec');
+    toast((e && e.message) || 'Could not reach that URL');
   }
 }
 function renderSync(){
@@ -1634,11 +1795,13 @@ async function boot(){
   if(savedCats && Array.isArray(savedCats.value) && savedCats.value.length) CATS = savedCats.value;
   await loadSyncConfig();
   await loadFixedAndBudgets();
+  await loadRules();
   const lb = await dbGet('meta','lastBackup');
   LAST_BACKUP = lb ? lb.value : null;
   await loadEntries();
   fillCatSelects(); fillDatalists(); fillMonthSelects();
   await ensureFixedEntries();      // book any months that have come around since last time
+  await applyRules();              // re-file anything an import left in Other
   fillMonthSelects();
   resetForm();
   renderQuickChips();
@@ -1719,6 +1882,14 @@ async function boot(){
   $('#modalX').addEventListener('click', () => $('#modal').classList.remove('on'));
   $('#modal').addEventListener('click', e => { if(e.target.id === 'modal') $('#modal').classList.remove('on'); });
 
+  $('#resetCats').addEventListener('click', async () => {
+    // additive on purpose: anything in use stays, missing standards come back
+    const before = CATS.length;
+    DEFAULT_CATS.forEach(c => { if(!CATS.includes(c)) CATS.push(c); });
+    await dbPut('meta', {key:'categories', value:CATS});
+    fillCatSelects(); renderBudgetEditor(); fillFixedCatSelect();
+    toast(CATS.length > before ? 'Added ' + (CATS.length - before) + ' category(ies)' : 'Nothing missing');
+  });
   $('#addCat').addEventListener('click', async () => {
     const v = $('#newCat').value.trim();
     if(!v) return;
@@ -1836,6 +2007,27 @@ async function boot(){
     } else if(chip.classList.contains('qc') && box._combos){
       applyQuick(box._combos[+chip.dataset.i], false);
     }
+  });
+
+  // ---- re-categorising
+  $('#tidyBox').addEventListener('input', e => {
+    if(e.target.id === 'tidyQ'){
+      tidySearch = e.target.value;
+      clearTimeout(tidyTimer);
+      tidyTimer = setTimeout(() => { const v = tidySearch; renderTidy(); const el = $('#tidyQ'); if(el){ el.focus(); el.value = v; } }, 250);
+    }
+    if(e.target.id === 'tidyRemember') tidyRemember = e.target.checked;
+  });
+  $('#tidyBox').addEventListener('click', async e => {
+    if(e.target.id === 'tidyClear'){ tidySearch = ''; renderTidy(); return; }
+    if(!e.target.classList.contains('tidyApply')) return;
+    const stem = e.target.dataset.stem;
+    const sel = $('#tidyBox').querySelector('.tidySel[data-stem="' + stem + '"]');
+    if(!sel) return;
+    const n = await applyCategoryTo(stem, sel.value, tidyRemember);
+    tidySearch = '';          // job done, go back to whatever still needs sorting
+    renderTidy();
+    toast(n ? 'Moved ' + n + ' entr' + (n === 1 ? 'y' : 'ies') + ' to ' + sel.value : 'Nothing to move');
   });
   if('serviceWorker' in navigator){
     try { await navigator.serviceWorker.register('sw.js'); } catch(err){}
