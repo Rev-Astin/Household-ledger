@@ -158,6 +158,45 @@ svg.chart{width:100%;height:auto;display:block}
 .pill.off{background:#e7e1d0;color:#8b8271}
 .pill.busy{background:var(--wheat);color:#6b5a2a}
 
+
+/* quick-capture chips */
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.chip{
+  appearance:none;border:1px solid var(--sage);background:rgba(143,169,138,.12);
+  color:var(--moss-dark);font:inherit;font-size:13.5px;font-weight:600;
+  padding:9px 13px;border-radius:999px;cursor:pointer;min-height:40px;
+}
+.chip:active{background:var(--sage-soft)}
+.chip .sub{font-weight:400;color:#7a7263;font-size:12px}
+.chip.repeat{border-style:dashed}
+
+/* budget bars */
+.bud{margin-bottom:14px}
+.bud .top{display:flex;align-items:baseline;gap:8px;font-size:14px;margin-bottom:5px}
+.bud .top .cat{font-weight:600}
+.bud .top .fig{margin-left:auto;font-variant-numeric:tabular-nums;color:#6c6455;font-size:13px}
+.barwrap{position:relative;height:14px;background:#eee7d4;border-radius:999px;overflow:hidden}
+.barfill{height:100%;border-radius:999px;background:var(--moss);transition:width .3s}
+.barfill.mid{background:var(--wheat)}
+.barfill.over{background:var(--clay)}
+.pace{position:absolute;top:-3px;bottom:-3px;width:2px;background:#8b8271;opacity:.75}
+.budnote{font-size:12.5px;color:#7a7263;margin-top:4px}
+
+/* fixed-cost rows */
+.fixrow{display:grid;grid-template-columns:1.6fr 1.2fr .8fr .5fr auto;gap:8px;align-items:center;
+  padding:9px 0;border-bottom:1px solid #efe9d9;font-size:14px}
+.fixrow:last-of-type{border-bottom:0}
+.fixrow .nm{font-weight:600}
+.fixrow .amt{text-align:right;font-variant-numeric:tabular-nums}
+.fixrow.off{opacity:.5}
+.movers{font-size:14.5px;line-height:1.6}
+.movers li{margin:3px 0}
+@media(max-width:720px){
+  .fixrow{grid-template-columns:1fr auto;gap:4px}
+  .fixrow .cat,.fixrow .day{font-size:12.5px;color:#7a7263}
+  .fixrow .amt{text-align:left}
+}
+
 /* floating add button — phones only */
 .fab{
   position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:40;
@@ -213,6 +252,8 @@ svg.chart{width:100%;height:auto;display:block}
     <div class="card">
       <h2 id="formTitle">Log a purchase</h2>
       <div class="hint">A category total is all you need. Add individual items only when you want that shop's prices tracked.</div>
+      <div class="chips" id="quickChips"></div>
+
       <div class="grid">
         <div>
           <label class="f" for="f-date">Date</label>
@@ -354,6 +395,52 @@ svg.chart{width:100%;height:auto;display:block}
   <!-- DATA -->
   <section id="v-data" class="view" hidden>
     <div class="card">
+      <h2>Fixed monthly costs</h2>
+      <div class="hint">Bond, insurance, medical aid, school fees, policies. Enter each one once and the app books it every month by itself — so your totals show the real cost of the household, not just the shopping.</div>
+      <div id="fixedList"></div>
+      <details class="fold" id="fixedFold" style="margin-top:14px">
+        <summary>Add a fixed cost</summary>
+        <div class="grid">
+          <div>
+            <label class="f" for="fx-name">What is it</label>
+            <input id="fx-name" placeholder="e.g. Medical aid" autocomplete="off">
+          </div>
+          <div>
+            <label class="f" for="fx-cat">Category</label>
+            <select id="fx-cat"></select>
+          </div>
+          <div>
+            <label class="f" for="fx-amt">Amount per month (R)</label>
+            <input type="number" id="fx-amt" step="0.01" min="0" inputmode="decimal" placeholder="0.00">
+          </div>
+          <div>
+            <label class="f" for="fx-day">Day of the month</label>
+            <input type="number" id="fx-day" step="1" min="1" max="31" inputmode="numeric" placeholder="1">
+          </div>
+          <div>
+            <label class="f" for="fx-from">Start from</label>
+            <input type="month" id="fx-from">
+          </div>
+          <div>
+            <label class="f" for="fx-payer">Paid by (optional)</label>
+            <input id="fx-payer" placeholder="Name" autocomplete="off">
+          </div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn" id="fxAdd" type="button">Add fixed cost</button>
+        </div>
+        <div class="hint" style="margin:10px 0 0">Changing an amount later only affects future months — history stays as it was actually paid. If one month differs (a big municipal bill), just edit that single entry under Entries.</div>
+      </details>
+    </div>
+    <div class="card">
+      <h2>Monthly budgets</h2>
+      <div class="hint">Set a ceiling for the categories you want to hold the line on. Leave the rest blank. Progress bars appear on the Insights tab.</div>
+      <div id="budgetEditor"></div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn ghost" id="budSave" type="button">Save budgets</button>
+      </div>
+    </div>
+    <div class="card">
       <h2>Shared sync</h2>
       <div class="hint">Both phones read and write one Google Sheet, so your totals match. Amounts, categories, items and fuel sync; slip photos stay on the phone that took them.</div>
       <div id="syncState"></div>
@@ -415,6 +502,7 @@ svg.chart{width:100%;height:auto;display:block}
       <div class="hint">This wipes every entry and slip on this device. Download a backup first.</div>
       <button class="btn clay" id="wipe" type="button">Delete all data</button>
     </div>
+    <div class="hint" id="verLine" style="text-align:center;margin:0 0 8px"></div>
   </section>
 </div>
 
@@ -424,6 +512,8 @@ svg.chart{width:100%;height:auto;display:block}
 
 <script>
 /* ============================ storage ============================ */
+const APP_VERSION = '2';          // shown at the bottom of the Setup tab
+const APP_UPDATED = '31 Aug 2026';
 const DB_NAME = 'harvestLedger', DB_VER = 1; // internal store name kept as-is so entries logged before the rename are not lost
 let db = null;
 
@@ -446,7 +536,7 @@ function dbAll(store){ return new Promise((res,rej)=>{ const r = tx(store,'reado
 function dbGet(store, key){ return new Promise((res,rej)=>{ const r = tx(store,'readonly').get(key); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
 function dbClear(store){ return new Promise((res,rej)=>{ const r = tx(store,'readwrite').clear(); r.onsuccess=()=>res(); r.onerror=()=>rej(r.error); }); }
 
-const DEFAULT_CATS = ['Groceries','Fuel','Household & cleaning','Toiletries & health','Utilities (water/electricity)','Airtime & data','Transport & vehicle','School & education','Garden & livestock','Medical','Eating out','Clothing','Repairs & maintenance','Other'];
+const DEFAULT_CATS = ['Groceries','Fuel','Bond / rent','Insurance & policies','Household & cleaning','Toiletries & health','Utilities (water/electricity)','Airtime & data','Transport & vehicle','School & education','Garden & livestock','Medical','Eating out','Clothing','Repairs & maintenance','Other'];
 
 let ENTRIES = [];
 let CATS = DEFAULT_CATS.slice();
@@ -457,6 +547,8 @@ let inMonthTouched = false;   // true once the user picks a reporting month them
 let ALL = [];                 // every row including tombstones, needed for sync
 let SYNC = {url:'', pw:'', device:'', auto:true, since:0, pushedAt:0, lastOk:0, lastError:''};
 let syncing = false, syncTimer = null;
+let BUDGETS = {};   // { category: monthly cap }
+let FIXED = [];     // recurring cost definitions
 
 /* ============================ helpers ============================ */
 const $ = s => document.querySelector(s);
@@ -822,6 +914,7 @@ function detailBits(e){
   if(isFuel(e.category) && e.fuel && num(e.fuel.litres)) bits.push(litresTxt(e.fuel.litres) + ' @ ' + rate3(e.fuel.rate));
   if(its.length) bits.push(its.length + ' item' + (its.length>1?'s':''));
   if(e.payer) bits.push(esc(e.payer));
+  if(e.fixed) bits.push('<span style="color:#8b8271">fixed cost</span>');
   return bits;
 }
 function itemLinesHTML(its, sep){
@@ -894,15 +987,20 @@ function renderInsights(){
   const f = fuelStats(cur);
   const fAll = fuelStats(ENTRIES);
   const slips = cur.filter(e=>e.receipt).length;
-  const days = new Set(cur.map(e=>e.date)).size;
+  const days = new Set(cur.filter(e => !e.fixed).map(e=>e.date)).size;
+  const varSpend = cur.filter(e => !e.fixed).reduce((s,e)=>s+num(e.total),0);
+  const fixedSpend = cur.filter(e => e.fixed).reduce((s,e)=>s+num(e.total),0);
 
   let h = '<div class="kpis">';
   h += '<div class="kpi"><div class="lab">' + monthLabel(key) + ' spend</div><div class="val">' + money(cTot) + '</div><div class="note">' + cur.length + ' entries · ' + slips + ' slips kept</div></div>';
   h += '<div class="kpi"><div class="lab">vs ' + monthLabel(prevMonthKey(key)) + '</div><div class="val ' + (delta===null?'':(delta>0?'up':'down')) + '">' + (delta===null ? '—' : (delta>=0?'+':'') + delta.toFixed(1) + '%') + '</div><div class="note">' + (pTot>0 ? monthLabel(prevMonthKey(key)) + ': ' + money(pTot) : 'no prior month data') + '</div></div>';
   h += '<div class="kpi"><div class="lab">Fuel this month</div><div class="val">' + money(f.spend) + '</div><div class="note">' + (f.litres>0 ? litresTxt(f.litres) + ' · avg ' + rate3(f.avgRate) + '/L' : 'no litres captured') + '</div></div>';
-  h += '<div class="kpi"><div class="lab">Avg per shopping day</div><div class="val">' + money(cTot / Math.max(1, days)) + '</div><div class="note">across ' + days + ' day(s) with spend</div></div>';
+  h += '<div class="kpi"><div class="lab">Avg per shopping day</div><div class="val">' + money(varSpend / Math.max(1, days)) + '</div><div class="note">across ' + days + ' day(s) with spend</div></div>';
+  if(fixedSpend) h += '<div class="kpi"><div class="lab">Fixed vs variable</div><div class="val">' + Math.round((fixedSpend/Math.max(1,cTot))*100) + '%</div><div class="note">' + money(fixedSpend) + ' fixed · ' + money(varSpend) + ' day-to-day</div></div>';
   h += '</div>';
 
+  h += budgetCardHTML(key);
+  h += moversHTML(key, prevMonthKey(key));
   h += '<div class="card"><h2>Where the money went — ' + monthLabel(key) + '</h2><div class="hint">Biggest categories first.</div><div class="chartbox">' + barChartH(totalsByCategory(cur)) + '</div></div>';
 
   const mt = monthlyTotals(ENTRIES, 12);
@@ -996,7 +1094,10 @@ function renderPrices(){
 }
 
 function renderData(){
+  $('#verLine').textContent = 'App version ' + APP_VERSION + ' · ' + APP_UPDATED;
   renderSync();
+  renderFixed();
+  renderBudgetEditor();
   const n = $('#backupNudge');
   const d = daysSince(LAST_BACKUP);
   if(!ENTRIES.length) n.innerHTML = '';
@@ -1136,6 +1237,226 @@ async function importJSON(file){
 }
 
 
+
+/* ============================ fixed monthly costs ============================ */
+function slug(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,24) || 'item'; }
+function daysInMonth(key){
+  const p = key.split('-').map(Number);
+  return new Date(p[0], p[1], 0).getDate();
+}
+function monthList(fromKey, toKey){
+  const out = [];
+  if(!fromKey || !toKey || fromKey > toKey) return out;
+  let [y,m] = fromKey.split('-').map(Number);
+  const [ty,tm] = toKey.split('-').map(Number);
+  let guard = 0;
+  while((y < ty || (y === ty && m <= tm)) && guard++ < 240){
+    out.push(y + '-' + String(m).padStart(2,'0'));
+    m++; if(m > 12){ m = 1; y++; }
+  }
+  return out;
+}
+/* Same id on every phone, so if both generate July's medical aid the sheet keeps ONE row. */
+function fixedEntryId(def, monthKey){ return 'fx-' + def.slug + '-' + monthKey; }
+
+async function loadFixedAndBudgets(){
+  const b = await dbGet('meta','budgets');
+  BUDGETS = (b && b.value) || {};
+  const f = await dbGet('meta','fixed');
+  FIXED = (f && f.value) || [];
+}
+async function saveFixed(){ await dbPut('meta', {key:'fixed', value:FIXED}); }
+async function saveBudgets(){ await dbPut('meta', {key:'budgets', value:BUDGETS}); }
+
+async function ensureFixedEntries(){
+  if(!FIXED.length) return 0;
+  const seen = {};
+  ALL.forEach(e => { seen[e.id] = true; });   // tombstones count: a deleted month stays deleted
+  const nowKey = ym(todayISO());
+  let made = 0;
+  for(const def of FIXED){
+    if(def.active === false) continue;
+    const from = def.startMonth || nowKey;
+    const to = (def.endMonth && def.endMonth < nowKey) ? def.endMonth : nowKey;
+    for(const key of monthList(from, to)){
+      const id = fixedEntryId(def, key);
+      if(seen[id]) continue;
+      const day = Math.min(Math.max(1, Math.round(num(def.day)) || 1), daysInMonth(key));
+      await dbPut('entries', {
+        id, date: key + '-' + String(day).padStart(2,'0'),
+        category: def.category, store: def.name, payer: def.payer || '',
+        total: num(def.amount), notes: '', items: [], fixed: true,
+        created: Date.now(), updated: Date.now(), device: SYNC.device || ''
+      });
+      seen[id] = true;
+      made++;
+    }
+  }
+  if(made) await loadEntries();
+  return made;
+}
+
+function renderFixed(){
+  fillFixedCatSelect();
+  const box = $('#fixedList');
+  if(!FIXED.length){
+    box.innerHTML = '<div class="empty">Nothing yet. Your bond, insurance and medical aid are usually the biggest numbers in the household — worth adding.</div>';
+    return;
+  }
+  const monthly = FIXED.filter(d => d.active !== false).reduce((s,d) => s + num(d.amount), 0);
+  box.innerHTML = FIXED.map((d,i) =>
+    '<div class="fixrow' + (d.active === false ? ' off' : '') + '">' +
+      '<div class="nm">' + esc(d.name) + '</div>' +
+      '<div class="cat"><span class="tag' + (isFuel(d.category)?' fuel':'') + '">' + esc(d.category) + '</span></div>' +
+      '<div class="amt">' + money(d.amount) + '</div>' +
+      '<div class="day">day ' + (Math.round(num(d.day))||1) + '</div>' +
+      '<div style="white-space:nowrap">' +
+        '<button class="btn ghost sm fxToggle" data-i="' + i + '">' + (d.active === false ? 'Resume' : 'Pause') + '</button> ' +
+        '<button class="btn ghost sm fxDel" data-i="' + i + '">&times;</button>' +
+      '</div>' +
+    '</div>'
+  ).join('') +
+  '<div class="okbox" style="margin-top:12px">Fixed costs total <strong>' + money(monthly) + '</strong> a month — ' + money(monthly*12) + ' a year.</div>';
+}
+function fillFixedCatSelect(){
+  const sel = $('#fx-cat');
+  if(!sel) return;
+  const keep = sel.value;
+  sel.innerHTML = CATS.map(c => '<option>'+esc(c)+'</option>').join('');
+  if(keep && CATS.includes(keep)) sel.value = keep;
+}
+
+/* ============================ budgets ============================ */
+function renderBudgetEditor(){
+  const box = $('#budgetEditor');
+  box.innerHTML = CATS.map(c =>
+    '<div class="row" style="margin-bottom:8px">' +
+      '<div style="flex:1 1 150px;font-size:14px">' + esc(c) + '</div>' +
+      '<input class="budInput" data-cat="' + esc(c) + '" type="number" step="1" min="0" inputmode="decimal" ' +
+        'style="max-width:140px" placeholder="no cap" value="' + (BUDGETS[c] != null ? esc(BUDGETS[c]) : '') + '">' +
+    '</div>'
+  ).join('');
+}
+function budgetRows(monthKey){
+  const spent = new Map();
+  ENTRIES.filter(e => ym(e.date) === monthKey).forEach(e => spent.set(e.category, (spent.get(e.category)||0) + num(e.total)));
+  return Object.keys(BUDGETS)
+    .filter(c => num(BUDGETS[c]) > 0)
+    .map(c => {
+      const cap = num(BUDGETS[c]), used = spent.get(c) || 0;
+      return {cat:c, cap, used, pct: cap > 0 ? (used/cap)*100 : 0, left: cap - used};
+    })
+    .sort((a,b) => b.pct - a.pct);
+}
+function monthPacePct(monthKey){
+  // how far through the month we are; only meaningful for the current month
+  if(monthKey !== ym(todayISO())) return null;
+  const day = Number(todayISO().slice(8,10));
+  return (day / daysInMonth(monthKey)) * 100;
+}
+function budgetCardHTML(monthKey){
+  const rows = budgetRows(monthKey);
+  if(!rows.length){
+    return '<div class="card"><h2>Budgets</h2><div class="hint" style="margin:0">No caps set. Setup → Monthly budgets, and the bars appear here.</div></div>';
+  }
+  const pace = monthPacePct(monthKey);
+  const capTotal = rows.reduce((s,r)=>s+r.cap,0);
+  const usedTotal = rows.reduce((s,r)=>s+r.used,0);
+  let h = '<div class="card"><h2>Budgets — ' + monthLabel(monthKey) + '</h2>';
+  h += '<div class="hint">' + (pace === null
+      ? 'Full month, so these are final.'
+      : 'The grey line is how far through the month you are (' + Math.round(pace) + '%). A bar past the line is running hot.') + '</div>';
+  rows.forEach(r => {
+    const cls = r.pct > 100 ? 'over' : (r.pct > 80 ? 'mid' : '');
+    h += '<div class="bud">' +
+      '<div class="top"><span class="cat">' + esc(r.cat) + '</span>' +
+        '<span class="fig">' + money(r.used) + ' of ' + money(r.cap) + '</span></div>' +
+      '<div class="barwrap"><div class="barfill ' + cls + '" style="width:' + Math.min(100, r.pct).toFixed(1) + '%"></div>' +
+        (pace !== null ? '<div class="pace" style="left:' + pace.toFixed(1) + '%"></div>' : '') + '</div>' +
+      '<div class="budnote">' + (r.left >= 0
+          ? money(r.left) + ' left · ' + Math.round(r.pct) + '% used'
+          : '<span class="up">' + money(-r.left) + ' over</span> · ' + Math.round(r.pct) + '%') + '</div>' +
+    '</div>';
+  });
+  const leftTotal = capTotal - usedTotal;
+  h += '<div class="' + (leftTotal >= 0 ? 'okbox' : 'warnbox') + '">' +
+    (leftTotal >= 0
+      ? 'Across all caps: <strong>' + money(leftTotal) + '</strong> still available of ' + money(capTotal) + '.'
+      : 'Across all caps you are <strong>' + money(-leftTotal) + '</strong> over ' + money(capTotal) + '.') +
+    '</div></div>';
+  return h;
+}
+
+/* ============================ what changed ============================ */
+function moversHTML(curKey, prevKey){
+  const sum = k => {
+    const m = new Map();
+    ENTRIES.filter(e => ym(e.date) === k).forEach(e => m.set(e.category, (m.get(e.category)||0) + num(e.total)));
+    return m;
+  };
+  const a = sum(prevKey), b = sum(curKey);
+  const cats = Array.from(new Set(Array.from(a.keys()).concat(Array.from(b.keys()))));
+  if(!cats.length) return '';
+  const diffs = cats.map(c => ({cat:c, was:a.get(c)||0, now:b.get(c)||0, d:(b.get(c)||0)-(a.get(c)||0)}))
+                    .filter(r => Math.abs(r.d) >= 1)
+                    .sort((x,y) => Math.abs(y.d) - Math.abs(x.d))
+                    .slice(0,3);
+  if(!diffs.length) return '';
+  let h = '<div class="card"><h2>What changed since ' + monthLabel(prevKey) + '</h2>' +
+          '<div class="hint">The three categories that moved most.</div><ul class="movers">';
+  diffs.forEach(r => {
+    const up = r.d > 0;
+    const pct = r.was > 0 ? Math.abs(r.d / r.was) * 100 : null;
+    h += '<li><strong>' + esc(r.cat) + '</strong> ' +
+      (up ? '<span class="up">up ' : '<span class="down">down ') + money(Math.abs(r.d)) + '</span>' +
+      (pct !== null ? ' (' + Math.round(pct) + '%)' : ' (new)') +
+      ' — ' + money(r.was) + ' → ' + money(r.now) + '</li>';
+  });
+  return h + '</ul></div>';
+}
+
+/* ============================ quick capture ============================ */
+function quickCombos(){
+  const cut = new Date(Date.now() - 90*86400000).toISOString().slice(0,10);
+  const m = new Map();
+  ENTRIES.filter(e => !e.fixed && (e.date||'') >= cut).forEach(e => {
+    const k = e.category + '||' + (e.store||'');
+    if(!m.has(k)) m.set(k, {category:e.category, store:e.store||'', n:0, last:0, total:0});
+    const r = m.get(k);
+    r.n++; r.total += num(e.total);
+    if((e.created||0) > r.last) r.last = e.created||0;
+  });
+  return Array.from(m.values()).sort((x,y) => y.n - x.n || y.last - x.last).slice(0,5);
+}
+function renderQuickChips(){
+  const box = $('#quickChips');
+  if(!box) return;
+  const combos = quickCombos();
+  const recent = ENTRIES.filter(e => !e.fixed).slice().sort((a,b) => (b.created||0)-(a.created||0))[0];
+  if(ENTRIES.filter(e => !e.fixed).length < 3){ box.innerHTML = ''; return; }
+  let h = '';
+  if(recent){
+    h += '<button class="chip repeat" id="chipRepeat" type="button">Repeat last' +
+         '<div class="sub">' + esc(recent.category) + (recent.store ? ' · ' + esc(recent.store) : '') + ' · ' + money(recent.total) + '</div></button>';
+  }
+  combos.forEach((c,i) => {
+    h += '<button class="chip qc" data-i="' + i + '" type="button">' + esc(c.store || c.category) +
+         '<div class="sub">' + esc(c.category) + ' · ' + c.n + '&times;' + '</div></button>';
+  });
+  box.innerHTML = h;
+  box._combos = combos;
+  box._recent = recent;
+}
+function applyQuick(c, alsoTotal){
+  resetForm();
+  if(c.category){ if(!CATS.includes(c.category)){ CATS.push(c.category); fillCatSelects(); } $('#f-cat').value = c.category; }
+  $('#f-store').value = c.store || '';
+  if(alsoTotal && c.total) $('#f-total').value = (Math.round(num(c.total)*100)/100).toFixed(2);
+  toggleFuel(); recalcItems();
+  try { $('#f-total').focus(); } catch(err){}
+  toast(alsoTotal ? 'Filled in — check the amount' : 'Filled in — type the amount');
+}
+
 /* ============================ shared sync (Google Sheet backend) ============================ */
 async function loadEntries(){
   ALL = await dbAll('entries');
@@ -1155,7 +1476,7 @@ function forWire(e){
   return {
     id:e.id, date:e.date, category:e.category, store:e.store||'', payer:e.payer||'',
     total:num(e.total), notes:e.notes||'', items:entryItems(e), fuel:e.fuel||null,
-    deleted:!!e.deleted, updated:Number(e.updated)||Date.now(), device:e.device||SYNC.device||''
+    deleted:!!e.deleted, fixed:!!e.fixed, updated:Number(e.updated)||Date.now(), device:e.device||SYNC.device||''
   };
 }
 function pendingRows(){
@@ -1303,6 +1624,7 @@ async function reload(){
   fillCatSelects();
   fillDatalists();
   fillMonthSelects();
+  renderQuickChips();
   show(currentView());
 }
 
@@ -1311,11 +1633,15 @@ async function boot(){
   const savedCats = await dbGet('meta','categories');
   if(savedCats && Array.isArray(savedCats.value) && savedCats.value.length) CATS = savedCats.value;
   await loadSyncConfig();
+  await loadFixedAndBudgets();
   const lb = await dbGet('meta','lastBackup');
   LAST_BACKUP = lb ? lb.value : null;
   await loadEntries();
   fillCatSelects(); fillDatalists(); fillMonthSelects();
+  await ensureFixedEntries();      // book any months that have come around since last time
+  fillMonthSelects();
   resetForm();
+  renderQuickChips();
 
   // ask Android/Chrome not to evict this data when the phone runs low on space
   if(navigator.storage && navigator.storage.persist){
@@ -1447,6 +1773,70 @@ async function boot(){
   });
   if(syncConfigured()) syncNow(true);
   setInterval(updatePill, 60000);
+
+  // ---- fixed costs
+  $('#fxAdd').addEventListener('click', async () => {
+    const name = $('#fx-name').value.trim();
+    const amount = num($('#fx-amt').value);
+    if(!name || !amount){ toast('Needs a name and an amount'); return; }
+    const def = {
+      name, slug: slug(name), category: $('#fx-cat').value, amount,
+      day: Math.min(31, Math.max(1, Math.round(num($('#fx-day').value)) || 1)),
+      startMonth: $('#fx-from').value || ym(todayISO()),
+      payer: $('#fx-payer').value.trim(), active: true
+    };
+    if(FIXED.some(d => d.slug === def.slug)){ toast('You already have one called that'); return; }
+    FIXED.push(def);
+    await saveFixed();
+    const made = await ensureFixedEntries();
+    $('#fx-name').value = ''; $('#fx-amt').value = ''; $('#fx-day').value = ''; $('#fx-payer').value = '';
+    $('#fixedFold').open = false;
+    renderFixed(); await reload(); queueSync();
+    toast(made ? 'Added — ' + made + ' month(s) booked' : 'Added');
+  });
+  $('#fixedList').addEventListener('click', async e => {
+    const t = e.target;
+    if(t.classList.contains('fxToggle')){
+      const d = FIXED[+t.dataset.i];
+      d.active = (d.active === false);
+      await saveFixed();
+      if(d.active) await ensureFixedEntries();
+      renderFixed(); await reload();
+      toast(d.active ? 'Booking again from this month' : 'Stopped — past months stay as they are');
+    }
+    if(t.classList.contains('fxDel')){
+      const d = FIXED[+t.dataset.i];
+      if(!confirm('Stop tracking "' + d.name + '"? Months already booked stay in your history.')) return;
+      FIXED.splice(+t.dataset.i, 1);
+      await saveFixed(); renderFixed();
+      toast('Removed from fixed costs');
+    }
+  });
+
+  // ---- budgets
+  $('#budSave').addEventListener('click', async () => {
+    const next = {};
+    $$('.budInput').forEach(i => {
+      const v = num(i.value);
+      if(v > 0) next[i.dataset.cat] = v;
+    });
+    BUDGETS = next;
+    await saveBudgets();
+    toast(Object.keys(BUDGETS).length ? 'Budgets saved — see the Insights tab' : 'All caps cleared');
+  });
+
+  // ---- quick capture
+  $('#quickChips').addEventListener('click', e => {
+    const chip = e.target.closest('.chip');
+    if(!chip) return;
+    const box = $('#quickChips');
+    if(chip.id === 'chipRepeat' && box._recent){
+      const r = box._recent;
+      applyQuick({category:r.category, store:r.store, total:r.total}, true);
+    } else if(chip.classList.contains('qc') && box._combos){
+      applyQuick(box._combos[+chip.dataset.i], false);
+    }
+  });
   if('serviceWorker' in navigator){
     try { await navigator.serviceWorker.register('sw.js'); } catch(err){}
   }
