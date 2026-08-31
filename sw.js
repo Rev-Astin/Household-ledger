@@ -1,5 +1,5 @@
 /* VanSchalkwyk Ledger offline cache. Bump CACHE when index.html changes. */
-const CACHE = 'vanschalkwyk-ledger-v2';
+const CACHE = 'vanschalkwyk-ledger-v4';
 const ASSETS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
