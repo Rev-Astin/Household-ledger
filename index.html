@@ -533,8 +533,8 @@ svg.chart{width:100%;height:auto;display:block}
 
 <script>
 /* ============================ storage ============================ */
-const APP_VERSION = '5';          // shown at the bottom of the Setup tab
-const APP_UPDATED = '31 Aug 2026 (v5)';
+const APP_VERSION = '6';          // shown at the bottom of the Setup tab
+const APP_UPDATED = '31 Aug 2026 (v6)';
 const DB_NAME = 'harvestLedger', DB_VER = 1; // internal store name kept as-is so entries logged before the rename are not lost
 let db = null;
 
@@ -785,9 +785,9 @@ function fillDatalists(){
 function itemRowHTML(it){
   it = it || {};
   return '<div class="itemrow">' +
-    '<input class="it-name" placeholder="Item name" value="'+esc(it.name||'')+'" autocomplete="off">' +
-    '<input class="it-qty" type="number" step="0.01" min="0" inputmode="decimal" placeholder="Qty" value="'+(it.qty!=null?esc(it.qty):'')+'">' +
-    '<input class="it-unit" type="number" step="0.01" min="0" inputmode="decimal" placeholder="Unit R" value="'+(it.unit!=null?esc(it.unit):'')+'">' +
+    '<input class="it-name" name="item-name" placeholder="Item name" value="'+esc(it.name||'')+'" autocomplete="off">' +
+    '<input class="it-qty" name="item-qty" type="number" step="0.01" min="0" inputmode="decimal" placeholder="Qty" value="'+(it.qty!=null?esc(it.qty):'')+'">' +
+    '<input class="it-unit" name="item-unit" type="number" step="0.01" min="0" inputmode="decimal" placeholder="Unit R" value="'+(it.unit!=null?esc(it.unit):'')+'">' +
     '<div class="lt">Line: <strong class="it-line">R 0,00</strong></div>' +
     '<button class="btn ghost sm it-del" type="button">&times;</button>' +
   '</div>';
@@ -1356,7 +1356,7 @@ function renderBudgetEditor(){
   box.innerHTML = CATS.map(c =>
     '<div class="row" style="margin-bottom:8px">' +
       '<div style="flex:1 1 150px;font-size:14px">' + esc(c) + '</div>' +
-      '<input class="budInput" data-cat="' + esc(c) + '" type="number" step="1" min="0" inputmode="decimal" ' +
+      '<input class="budInput" name="budget-' + esc(slug(c)) + '" data-cat="' + esc(c) + '" type="number" step="1" min="0" inputmode="decimal" ' +
         'style="max-width:140px" placeholder="no cap" value="' + (BUDGETS[c] != null ? esc(BUDGETS[c]) : '') + '">' +
     '</div>'
   ).join('');
@@ -1483,6 +1483,7 @@ function applyQuick(c, alsoTotal){
 
 
 /* ============================ re-categorising, and learning from it ============================ */
+function slugify_name(s){ return String(s||'').replace(/[^a-z0-9]+/gi,'-').slice(0,24) || 'shop'; }
 function stemStore(s){
   const t = String(s || '').toLowerCase()
     .replace(/\b(pty|ltd|limited|za|gb|cape town|ottery|kenilworth|wynberg|claremont|plumstead|grassy park|milnerton|tokai)\b/g, ' ')
@@ -1570,7 +1571,7 @@ function renderTidy(){
   let h = '<div class="tidy">';
   h += '<h3>' + heading + '</h3><div class="hint" style="margin-bottom:10px">' + hint + '</div>';
   h += '<div class="row" style="margin-bottom:10px">' +
-       '<input id="tidyQ" placeholder="Find a shop to re-categorise, e.g. Chingadas" autocomplete="off" value="' + esc(tidySearch || '') + '">' +
+       '<input id="tidyQ" name="tidy-search" placeholder="Find a shop to re-categorise, e.g. Chingadas" autocomplete="off" value="' + esc(tidySearch || '') + '">' +
        (q ? '<button class="btn ghost sm" id="tidyClear" type="button">Clear</button>' : '') +
        '</div>';
   if(!groups.length){
@@ -1581,7 +1582,7 @@ function renderTidy(){
       h += '<div class="trow">' +
         '<div class="m" title="' + esc(g.label) + '">' + esc(g.label.length > 34 ? g.label.slice(0,33) + '…' : g.label) + '</div>' +
         '<div class="n">' + g.n + '× · ' + money(g.total) + '</div>' +
-        '<select class="tidySel" data-stem="' + esc(g.stem) + '">' + catOptions(cur) + '</select>' +
+        '<select class="tidySel" name="cat-' + esc(slugify_name(g.stem)) + '" data-stem="' + esc(g.stem) + '">' + catOptions(cur) + '</select>' +
         '<button class="btn ghost sm ap tidyApply" data-stem="' + esc(g.stem) + '">Apply</button>' +
       '</div>';
     });
